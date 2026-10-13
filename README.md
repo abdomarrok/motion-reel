@@ -21,9 +21,11 @@
   - Edit captions, customize per-scene durations, and fine-tune spring dynamics (`stiffness` and `damping`).
 - **🚀 Production Video Render Engine**:
   - Zero-config static FFmpeg bundled via `ffmpeg-static`.
-  - Deterministic frame capture with Playwright Chromium at 60 FPS (1080×1920 vertical resolution).
+  - **High-speed 30 FPS render pipeline** tailored for TikTok & Reels standards (4×–5× faster than uncompressed 60fps renders, ~30–45s export time for 1080×1920 vertical video).
+  - Streamlined JPEG frame piping with FFmpeg `fast` preset.
+  - Real-time Server-Sent Events (SSE) progress streaming with percent and elapsed time updates.
+  - Full render cancellation support to terminate browser contexts and encoder processes cleanly without resource leaks.
   - Procedural sound effect synthesis (clicks, pops, whooshes) synced to scene cues.
-  - Subframe motion blur and temporal anti-aliasing via frame blending (`tmix`).
 
 ---
 
@@ -52,13 +54,13 @@
                       ▼                                                                                ▼
           ┌───────────────────────┐                                                        ┌───────────────────────┐
           │   Playwright Browser  │                                                        │   SFX Synthesizer     │
-          │ (1080x1920 @ 60 FPS)  │                                                        │   (16-bit PCM WAV)    │
+          │ (1080x1920 @ 30 FPS)  │                                                        │   (16-bit PCM WAV)    │
           └───────────┬───────────┘                                                        └───────────┬───────────┘
-                      │ raw image stream                                                               │ sfx.wav
+                      │ fast JPEG pipe                                                                 │ sfx.wav
                       ▼                                                                                ▼
           ┌────────────────────────────────────────────────────────────────────────────────────────────┴───┐
           │                                      FFmpeg Video Engine                                       │
-          │                           (libx264 60fps + AAC Audio Normalization)                            │
+          │                           (libx264 30fps fast + AAC Audio Normalization)                       │
           └───────────────────────────────────────────────┬────────────────────────────────────────────────┘
                                                           │
                                                           ▼
@@ -147,7 +149,7 @@ motion-reel/
 |---|---|
 | `npm run dev` | Runs both Vite client (`:5173`) and Express API (`:3001`) with concurrently |
 | `npm run dev:client` | Starts only the Vite frontend dev server |
-| `npm run dev:server` | Starts only the Express render API |
+| `npm run dev:server` | Starts the Express render API with hot reload (`node --watch`) |
 | `npm run build` | Builds the production Vite bundle to `dist/` |
 | `npm run preview` | Previews the production Vite build locally |
 | `npm run render:cli` | Renders a video directly from the command line using Playwright & FFmpeg |

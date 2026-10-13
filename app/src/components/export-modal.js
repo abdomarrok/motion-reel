@@ -1,28 +1,34 @@
 /**
- * Export Modal Component — Shows render progress and download link.
+ * Export Modal Component — Shows render progress, cancellation, and download link.
  */
+
+let activeJobId = null;
+let activeEvtSource = null;
+let activePollTimeout = null;
 
 /**
  * Show the export modal and start the render process.
- * @param {object} config - Full template config (brand + scenes)
  * @param {string} templateId - Template ID
- * @returns {Promise<void>}
+ * @param {object} config - Full template config (brand + scenes)
  */
 export function showExportModal(templateId, config) {
   const root = document.getElementById('modal-root');
+
+  // Clean up any stale job listeners
+  cleanupActiveJob();
 
   root.innerHTML = `
     <div class="modal-overlay" id="export-overlay">
       <div class="modal-panel">
         <div class="modal-header">
           <h2>🎬 Export Video</h2>
-          <button class="modal-close" id="export-close">✕</button>
+          <button class="modal-close" id="export-close" title="Close">✕</button>
         </div>
 
         <div id="export-content">
           <div class="export-status" id="export-status">
-            <div class="export-spinner"></div>
-            <span>Preparing render...</span>
+            <div class="export-spinner" id="export-spinner"></div>
+            <span id="export-status-text">Preparing render pipeline...</span>
           </div>
           <div class="progress-label">
             <span id="progress-stage">Initializing</span>
@@ -31,34 +37,62 @@ export function showExportModal(templateId, config) {
           <div class="progress-bar">
             <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
           </div>
-          <p style="font-size:0.78rem; color:var(--text-muted); margin-top:12px;">
-            This renders frames via Playwright + ffmpeg on your machine. It may take a few minutes.
+          <p id="export-hint" style="font-size:0.78rem; color:var(--text-muted); margin-top:12px; line-height:1.4;">
+            Renders 1080×1920 30fps frames via Playwright + ffmpeg audio mix (~20–40 seconds).
           </p>
+          <div id="export-actions" style="margin-top:16px;">
+            <button class="btn btn-secondary btn-sm" id="export-cancel-btn" style="width:100%;">
+              Cancel Export
+            </button>
+          </div>
         </div>
       </div>
     </div>
   `;
 
-  // Close handler
-  const close = () => { root.innerHTML = ''; };
-  root.querySelector('#export-close').addEventListener('click', close);
+  // Close & Cancel handlers
+  const handleCancelAndClose = async () => {
+    if (activeJobId) {
+      try {
+        await fetch(`/api/render/${activeJobId}/cancel`, { method: 'POST' });
+      } catch (_) {}
+    }
+    cleanupActiveJob();
+    root.innerHTML = '';
+  };
+
+  root.querySelector('#export-close').addEventListener('click', handleCancelAndClose);
+  root.querySelector('#export-cancel-btn').addEventListener('click', handleCancelAndClose);
   root.querySelector('#export-overlay').addEventListener('click', (e) => {
-    if (e.target.id === 'export-overlay') close();
+    if (e.target.id === 'export-overlay') handleCancelAndClose();
   });
 
   // Start render
   startRender(templateId, config, root);
 }
 
+function cleanupActiveJob() {
+  if (activeEvtSource) {
+    try { activeEvtSource.close(); } catch (_) {}
+    activeEvtSource = null;
+  }
+  if (activePollTimeout) {
+    clearTimeout(activePollTimeout);
+    activePollTimeout = null;
+  }
+  activeJobId = null;
+}
+
 async function startRender(templateId, config, root) {
   const statusEl = root.querySelector('#export-status');
+  const statusText = root.querySelector('#export-status-text');
   const stageEl = root.querySelector('#progress-stage');
   const pctEl = root.querySelector('#progress-pct');
   const fillEl = root.querySelector('#progress-fill');
   const contentEl = root.querySelector('#export-content');
+  const actionsEl = root.querySelector('#export-actions');
 
   try {
-    // 1. Send render request
     updateProgress(stageEl, pctEl, fillEl, 'Sending to render server...', 5);
 
     const res = await fetch('/api/render', {
@@ -73,98 +107,162 @@ async function startRender(templateId, config, root) {
     }
 
     const { jobId } = await res.json();
+    activeJobId = jobId;
     updateProgress(stageEl, pctEl, fillEl, 'Render started...', 10);
 
-    // 2. Poll for progress via SSE
+    // Stream progress via SSE
     const evtSource = new EventSource(`/api/render/${jobId}/progress`);
+    activeEvtSource = evtSource;
 
     evtSource.addEventListener('progress', (e) => {
-      const data = JSON.parse(e.data);
-      updateProgress(stageEl, pctEl, fillEl, data.stage, data.percent);
+      try {
+        const data = JSON.parse(e.data);
+        if (data.stage) statusText.textContent = data.stage;
+        updateProgress(stageEl, pctEl, fillEl, data.stage, data.percent);
+      } catch (_) {}
     });
 
     evtSource.addEventListener('done', (e) => {
-      evtSource.close();
-      const data = JSON.parse(e.data);
-      showDownload(contentEl, statusEl, data.downloadUrl || `/api/render/${jobId}/download`);
+      cleanupActiveJob();
+      let downloadUrl = `/api/render/${jobId}/download`;
+      try {
+        const data = JSON.parse(e.data);
+        if (data.downloadUrl) downloadUrl = data.downloadUrl;
+      } catch (_) {}
+      showDownload(contentEl, statusEl, actionsEl, downloadUrl);
+    });
+
+    evtSource.addEventListener('cancelled', () => {
+      cleanupActiveJob();
+      showCancelled(statusEl, contentEl, actionsEl);
     });
 
     evtSource.addEventListener('error', (e) => {
-      // Check if it's a real error or just SSE reconnecting
-      if (evtSource.readyState === EventSource.CLOSED) return;
-      // EventSource auto-reconnects, only show error after final close
+      if (e.data) {
+        try {
+          const data = JSON.parse(e.data);
+          cleanupActiveJob();
+          showError(statusEl, contentEl, actionsEl, data.error || 'Render failed');
+          return;
+        } catch (_) {}
+      }
+      // If connection closed or broken, fall back to polling
+      if (evtSource.readyState === EventSource.CLOSED) {
+        cleanupActiveJob();
+        pollProgress(jobId, stageEl, pctEl, fillEl, contentEl, statusEl, actionsEl);
+      }
     });
 
     evtSource.onerror = () => {
-      // If connection lost completely, fall back to polling
-      evtSource.close();
-      pollProgress(jobId, stageEl, pctEl, fillEl, contentEl, statusEl);
+      if (activeEvtSource) {
+        activeEvtSource.close();
+        activeEvtSource = null;
+        pollProgress(jobId, stageEl, pctEl, fillEl, contentEl, statusEl, actionsEl);
+      }
     };
 
   } catch (err) {
-    showError(statusEl, contentEl, err.message);
+    showError(statusEl, contentEl, actionsEl, err.message);
   }
 }
 
 /** Fallback: poll /api/render/:id/status */
-async function pollProgress(jobId, stageEl, pctEl, fillEl, contentEl, statusEl) {
+async function pollProgress(jobId, stageEl, pctEl, fillEl, contentEl, statusEl, actionsEl) {
   const poll = async () => {
     try {
       const res = await fetch(`/api/render/${jobId}/status`);
-      if (!res.ok) throw new Error('Lost connection to server');
+      if (!res.ok) throw new Error('Lost connection to render server');
       const data = await res.json();
 
       if (data.status === 'done') {
-        showDownload(contentEl, statusEl, data.downloadUrl || `/api/render/${jobId}/download`);
+        cleanupActiveJob();
+        showDownload(contentEl, statusEl, actionsEl, data.downloadUrl || `/api/render/${jobId}/download`);
+        return;
+      }
+      if (data.status === 'cancelled') {
+        cleanupActiveJob();
+        showCancelled(statusEl, contentEl, actionsEl);
         return;
       }
       if (data.status === 'error') {
-        showError(statusEl, contentEl, data.error || 'Render failed');
+        cleanupActiveJob();
+        showError(statusEl, contentEl, actionsEl, data.error || 'Render failed');
         return;
       }
+
       updateProgress(stageEl, pctEl, fillEl, data.stage || 'Rendering...', data.percent || 50);
-      setTimeout(poll, 2000);
+      activePollTimeout = setTimeout(poll, 1500);
     } catch (err) {
-      showError(statusEl, contentEl, err.message);
+      cleanupActiveJob();
+      showError(statusEl, contentEl, actionsEl, err.message);
     }
   };
   poll();
 }
 
 function updateProgress(stageEl, pctEl, fillEl, stage, percent) {
-  stageEl.textContent = stage;
-  pctEl.textContent = `${Math.round(percent)}%`;
-  fillEl.style.width = `${percent}%`;
+  if (stageEl) stageEl.textContent = stage;
+  const pct = Math.min(100, Math.max(0, Math.round(percent)));
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  if (fillEl) fillEl.style.width = `${pct}%`;
 }
 
-function showDownload(contentEl, statusEl, downloadUrl) {
-  statusEl.innerHTML = `<span style="color:var(--success);">✓</span> <span>Render complete!</span>`;
+function showDownload(contentEl, statusEl, actionsEl, downloadUrl) {
+  statusEl.innerHTML = `<span style="color:var(--success); font-size:1.1rem; font-weight:bold;">✓</span> <span style="color:var(--success); font-weight:600;">Render complete!</span>`;
   statusEl.className = 'export-status success';
 
-  contentEl.insertAdjacentHTML('beforeend', `
-    <div style="margin-top: 20px; text-align: center;">
-      <a href="${downloadUrl}" download="motion-reel.mp4" class="btn btn-primary btn-lg btn-block" id="download-btn">
-        ⬇ Download MP4
-      </a>
-      <p style="font-size:0.75rem; color:var(--text-muted); margin-top:12px;">
-        1080×1920 • H.264 • Ready for TikTok
-      </p>
-    </div>
-  `);
+  const hintEl = contentEl.querySelector('#export-hint');
+  if (hintEl) hintEl.style.display = 'none';
+
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <div style="margin-top: 8px; text-align: center;">
+        <a href="${downloadUrl}" download="motion-reel.mp4" class="btn btn-primary btn-lg btn-block" id="download-btn" style="text-decoration:none;">
+          ⬇ Download MP4 Video
+        </a>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:10px;">
+          1080×1920 • 30fps H.264 • Ready for TikTok & Reels
+        </p>
+      </div>
+    `;
+  }
 }
 
-function showError(statusEl, contentEl, message) {
-  statusEl.innerHTML = `<span style="color:var(--error);">✕</span> <span>Export failed</span>`;
+function showCancelled(statusEl, contentEl, actionsEl) {
+  statusEl.innerHTML = `<span style="color:var(--text-muted);">⏹</span> <span>Render cancelled</span>`;
+  statusEl.className = 'export-status';
+
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="btn btn-secondary btn-sm" id="export-dismiss-btn" style="width:100%;">
+        Close
+      </button>
+    `;
+    actionsEl.querySelector('#export-dismiss-btn')?.addEventListener('click', () => {
+      const root = document.getElementById('modal-root');
+      if (root) root.innerHTML = '';
+    });
+  }
+}
+
+function showError(statusEl, contentEl, actionsEl, message) {
+  statusEl.innerHTML = `<span style="color:var(--error); font-weight:bold;">✕</span> <span>Export failed</span>`;
   statusEl.className = 'export-status error';
 
-  contentEl.insertAdjacentHTML('beforeend', `
-    <div style="margin-top:16px; padding:12px 16px; background:rgba(248,113,113,0.08); border-radius:var(--radius-sm); border:1px solid rgba(248,113,113,0.2);">
-      <p style="font-size:0.82rem; color:var(--error);">${escapeHTML(message)}</p>
-      <p style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">
-        Make sure the server is running (<code>npm run dev:server</code>) and ffmpeg is installed.
-      </p>
-    </div>
-  `);
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <div style="padding:12px 14px; background:rgba(248,113,113,0.08); border-radius:var(--radius-sm); border:1px solid rgba(248,113,113,0.2); margin-bottom:12px;">
+        <p style="font-size:0.82rem; color:var(--error); margin:0;">${escapeHTML(message)}</p>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="export-error-close-btn" style="width:100%;">
+        Close
+      </button>
+    `;
+    actionsEl.querySelector('#export-error-close-btn')?.addEventListener('click', () => {
+      const root = document.getElementById('modal-root');
+      if (root) root.innerHTML = '';
+    });
+  }
 }
 
 function escapeHTML(str) {

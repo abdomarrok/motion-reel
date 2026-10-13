@@ -38,12 +38,13 @@ export function renderEditor(container, templateId, onBack) {
     <div class="editor-view view-enter">
       <div class="editor-preview" id="editor-preview-area"></div>
       <div class="editor-sidebar" id="editor-sidebar">
-        <div style="margin-bottom:16px;">
-          <button class="btn btn-ghost" id="editor-back">← Back to Templates</button>
+        <div class="editor-back-row">
+          <button class="btn btn-ghost" id="editor-back">← Back</button>
+          <span class="editor-template-name">${escapeHTML(template.meta.name)}</span>
         </div>
         <div id="brand-kit-container"></div>
         <div id="scenes-container"></div>
-        <div style="padding:16px 0;">
+        <div style="padding:12px 0;">
           <button class="btn btn-primary btn-lg btn-block" id="export-btn">🎬 Export MP4</button>
         </div>
       </div>

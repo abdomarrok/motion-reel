@@ -7,6 +7,7 @@ dist/
 
 # Render pipeline outputs & temporary jobs
 out/
+scratch/
 *.mp4
 *.wav
 *.aac

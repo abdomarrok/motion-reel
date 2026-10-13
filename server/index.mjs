@@ -5,7 +5,7 @@
 import express from 'express';
 import cors from 'cors';
 import { existsSync } from 'node:fs';
-import { renderVideo, getJobStatus } from './renderer.mjs';
+import { renderVideo, getJobStatus, cancelJob } from './renderer.mjs';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +48,17 @@ app.post('/api/render', async (req, res) => {
 });
 
 /**
+ * POST /api/render/:jobId/cancel
+ * Cancel a running render job.
+ */
+app.post('/api/render/:jobId/cancel', (req, res) => {
+  const { jobId } = req.params;
+  const cancelled = cancelJob(jobId);
+  console.log(`[render] Cancel job ${jobId}: ${cancelled}`);
+  res.json({ success: cancelled });
+});
+
+/**
  * GET /api/render/:jobId/progress
  * Server-Sent Events stream for render progress.
  */
@@ -77,6 +88,13 @@ app.get('/api/render/:jobId/progress', (req, res) => {
       return;
     }
 
+    if (status.status === 'cancelled') {
+      res.write(`event: cancelled\ndata: ${JSON.stringify({ message: 'Render cancelled' })}\n\n`);
+      clearInterval(interval);
+      res.end();
+      return;
+    }
+
     if (status.status === 'error') {
       res.write(`event: error\ndata: ${JSON.stringify({ error: status.error })}\n\n`);
       clearInterval(interval);
@@ -85,7 +103,7 @@ app.get('/api/render/:jobId/progress', (req, res) => {
     }
 
     res.write(`event: progress\ndata: ${JSON.stringify({ stage: status.stage, percent: status.percent })}\n\n`);
-  }, 1000);
+  }, 500);
 
   req.on('close', () => clearInterval(interval));
 });

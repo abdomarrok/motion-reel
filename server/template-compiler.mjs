@@ -1,31 +1,47 @@
 /**
  * Template Compiler — Generates standalone index.html from template ID + config.
  * This is the server-side counterpart of the template modules.
+ * It dynamically imports the client-side template modules to generate HTML.
  */
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '..');
 
 /**
  * Compile a template + config into a standalone HTML string.
- * Dynamically imports the template module from the app source.
+ * Dynamically imports the template module from the app source to ensure
+ * server-side rendering always matches the client-side preview exactly.
  */
-export function compileTemplate(templateId, config) {
-  // We dynamically import the template from the app source.
-  // Since these are ES modules with string output, we can import them directly.
-  // However, for the server we need to handle this carefully.
+export async function compileTemplate(templateId, config) {
+  const templateMap = {
+    'kinetic-text': resolve(ROOT, 'app', 'src', 'templates', 'kinetic-text.js'),
+    'product-showcase': resolve(ROOT, 'app', 'src', 'templates', 'product-showcase.js'),
+    'brand-intro': resolve(ROOT, 'app', 'src', 'templates', 'brand-intro.js')
+  };
 
-  // For now, use a map of template compilers that mirror the client-side templates.
-  const compiler = COMPILERS[templateId];
-  if (!compiler) {
-    throw new Error(`Unknown template: "${templateId}". Available: ${Object.keys(COMPILERS).join(', ')}`);
+  const templatePath = templateMap[templateId];
+  if (!templatePath) {
+    throw new Error(`Unknown template: "${templateId}". Available: ${Object.keys(templateMap).join(', ')}`);
   }
-  return compiler(config);
+
+  try {
+    // Dynamic import of the ES module
+    const templateModule = await import(pathToFileURL(templatePath).href);
+    return templateModule.toHTML(config);
+  } catch (err) {
+    console.error(`[template-compiler] Failed to import ${templatePath}:`, err.message);
+    // Fallback to static compilers if dynamic import fails
+    const compiler = FALLBACK_COMPILERS[templateId];
+    if (!compiler) throw err;
+    console.log(`[template-compiler] Using fallback compiler for "${templateId}"`);
+    return compiler(config);
+  }
 }
 
-// ─── Core Utilities (shared by all templates) ────────────────────────
+// ─── Fallback: Core Utilities (shared by all templates) ──────────────
 
 const CORE_UTILS = `
 const W = 1080, H = 1920;
@@ -61,7 +77,21 @@ function wrapHTML(config, scenesCode) {
 <meta charset="utf-8">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=${encodeURIComponent(font)}:wght@400;600;700;800&display=swap');
-  html,body{margin:0;background:${bg}}canvas{display:block;max-height:100vh}
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: ${bg};
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 </style>
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
@@ -85,9 +115,9 @@ if (!navigator.webdriver) {
 </script>`;
 }
 
-// ─── Template Compilers ──────────────────────────────────────────────
+// ─── Fallback Template Compilers (used only if dynamic import fails) ─
 
-const COMPILERS = {
+const FALLBACK_COMPILERS = {
   'kinetic-text': compileKineticText,
   'product-showcase': compileProductShowcase,
   'brand-intro': compileBrandIntro
@@ -174,10 +204,6 @@ const SCENES = [
     g.font='800 140px "${b.font}",Arial,sans-serif'; g.textAlign='center';
     g.translate(W/2,H*0.3); g.scale(0.92+0.08*s,0.92+0.08*s);
     g.fillText(${JSON.stringify(scenes[0].text)},0,0); g.restore();
-    g.save(); g.globalAlpha=clamp((t-0.3)*4)*0.15; g.fillStyle='${b.accentColor}';
-    g.font='900 600px "${b.font}",Arial,sans-serif'; g.textAlign='center';
-    const qs=spring(t-0.2,120,26); g.translate(W/2,H*0.55);
-    g.scale(0.8+0.2*qs,0.8+0.2*qs); g.fillText('?',0,0); g.restore();
   }},
   { from: ${scenes[1].from}, to: ${scenes[1].to}, draw(t) {
     const cardS=spring(t-0.1,${scenes[1].springK},${scenes[1].springD});
@@ -186,11 +212,6 @@ const SCENES = [
     g.beginPath(); g.roundRect(cx,cy+200*(1-cardS),cardW,cardH*cardS,24); g.fill();
     g.strokeStyle='${b.accentColor}'; g.lineWidth=2; g.globalAlpha=clamp(t*4)*0.3;
     g.stroke(); g.restore();
-    const r=rng(11);
-    for(let i=0;i<5;i++){const elS=spring(t-0.3-i*0.12,220,20);const elY=cy+280+i*140;
-    g.save();g.globalAlpha=clamp((t-0.3-i*0.12)*4);
-    g.fillStyle=i===0?'${b.accentColor}':'rgba(255,255,255,0.06)';
-    const elW=i===0?600:300+r()*300;g.fillRect(cx+80,elY*cardS+200*(1-cardS),elW*elS,i===0?12:20);g.restore();}
     g.save();g.globalAlpha=clamp((t-0.5)*3);g.fillStyle='${b.textColor}';
     g.font='600 48px "${b.font}",Arial,sans-serif';g.textAlign='center';
     g.fillText(${JSON.stringify(scenes[1].text)},W/2,H*0.18);g.restore();
@@ -210,8 +231,6 @@ const SCENES = [
     g.font='900 280px "${b.font}",Arial,sans-serif';g.textAlign='center';
     g.translate(W/2,H*0.35);g.scale(0.9+0.1*s,0.9+0.1*s);
     g.fillText(${JSON.stringify(scenes[3].text)},0,0);g.restore();
-    g.save();g.fillStyle='${b.textColor}';g.globalAlpha=0.15;
-    const bar=spring(t-0.15,180,22);g.fillRect(W*0.15,H*0.42,W*0.7*bar,4);g.restore();
   }},
   { from: ${scenes[4].from}, to: ${scenes[4].to}, draw(t) {
     const s1=spring(t-0.1,${scenes[4].springK},${scenes[4].springD});
@@ -222,8 +241,6 @@ const SCENES = [
     const s2=spring(t-0.35,200,22);g.save();g.globalAlpha=clamp((t-0.35)*4);
     g.fillStyle='${b.accentColor}';g.font='600 64px "${b.font}",Arial,sans-serif';
     g.textAlign='center';g.fillText(${JSON.stringify(scenes[4].text)},W/2,H*0.38);g.restore();
-    g.save();g.fillStyle='${b.accentColor}';const bar=spring(t-0.2,200,22);
-    g.fillRect(W/2-300*bar,H*0.44,600*bar,6);g.restore();
   }}
 ];`;
 
@@ -262,9 +279,6 @@ const SCENES = [
     g.font='800 200px "${b.font}",Arial,sans-serif';g.textAlign='center';
     g.translate(W/2,H*0.42);g.scale(0.96+0.04*ls,0.96+0.04*ls);
     g.fillText(${JSON.stringify(b.name)},0,0);g.restore();
-    const dotS=spring(t-0.6,300,18);g.save();g.globalAlpha=clamp((t-0.5)*4);
-    g.fillStyle='${b.accentColor}';g.beginPath();g.arc(W/2+180,H*0.42-60,12*dotS,0,Math.PI*2);
-    g.fill();g.restore();
   }},
   { from: ${scenes[2].from}, to: ${scenes[2].to}, draw(t) {
     g.save();g.globalAlpha=0.3;g.fillStyle='${b.textColor}';
@@ -286,9 +300,6 @@ const SCENES = [
     g.fillText(${JSON.stringify(b.name)},0,0);g.restore();
     const bar=spring(t-0.25,160,22);g.save();g.fillStyle='${b.accentColor}';
     g.globalAlpha=0.6*clamp((t-0.2)*4);g.fillRect(W/2-200*bar,H*0.43,400*bar,4);g.restore();
-    const dotS=spring(t-0.4,280,18);g.save();g.globalAlpha=clamp((t-0.35)*4);
-    g.fillStyle='${b.accentColor}';g.beginPath();g.arc(W/2,H*0.47,8*dotS,0,Math.PI*2);
-    g.fill();g.restore();
   }}
 ];`;
 

@@ -25,8 +25,14 @@ export function renderGallery(container, onSelect) {
   // Header
   view.innerHTML = `
     <div class="gallery-header">
-      <h1>Choose a Template</h1>
-      <p>Pick a motion style, customize it with your brand, preview live, and export a TikTok-ready MP4.</p>
+      <h1>Motion Templates</h1>
+      <p>Pick a motion style, customize with your brand, preview live, and export a TikTok-ready 9:16 MP4.</p>
+      <div class="gallery-subtitle">
+        <span class="gallery-badge">⚡ Spring Physics</span>
+        <span class="gallery-badge">🎨 Brand Kit</span>
+        <span class="gallery-badge">📱 9:16 Ready</span>
+        <span class="gallery-badge">🎬 60fps Export</span>
+      </div>
     </div>
     <div class="gallery-grid" id="gallery-grid"></div>
   `;

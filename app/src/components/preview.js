@@ -22,7 +22,7 @@ export class Preview {
   _buildDOM() {
     this.container.innerHTML = `
       <div class="preview-wrapper" id="preview-frame">
-        <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin" style="width:100%;height:100%;border:none;background:#000;"></iframe>
+        <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
       </div>
       <div class="preview-controls" id="preview-controls">
         <button class="preview-btn" id="preview-play" title="Play / Pause">▶</button>

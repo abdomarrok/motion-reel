@@ -21,6 +21,23 @@ export function getJobStatus(jobId) {
   return jobs.get(jobId) || null;
 }
 
+export function cancelJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return false;
+  if (job.status === 'running') {
+    job.cancelled = true;
+    if (job.ff) {
+      try { job.ff.kill(); } catch (_) {}
+    }
+    if (job.browser) {
+      try { job.browser.close().catch(() => {}); } catch (_) {}
+    }
+    updateJob(jobId, { status: 'cancelled', stage: 'Render cancelled', percent: 0 });
+    return true;
+  }
+  return false;
+}
+
 function updateJob(jobId, updates) {
   const current = jobs.get(jobId) || {};
   jobs.set(jobId, { ...current, ...updates });
@@ -37,7 +54,7 @@ export async function renderVideo(jobId, templateId, config) {
 
   try {
     // 1. Compile template to standalone index.html
-    const html = compileTemplate(templateId, config);
+    const html = await compileTemplate(templateId, config);
     const htmlPath = resolve(jobDir, 'index.html');
     writeFileSync(htmlPath, html, 'utf8');
     updateJob(jobId, { stage: 'Template compiled', percent: 10 });
@@ -52,12 +69,12 @@ export async function renderVideo(jobId, templateId, config) {
     await renderFrames(jobId, jobDir, htmlPath, config);
 
     // 4. Generate SFX
-    updateJob(jobId, { stage: 'Synthesizing sound effects...', percent: 80 });
+    updateJob(jobId, { stage: 'Synthesizing sound effects...', percent: 85 });
     const sfxPath = resolve(jobDir, 'sfx.wav');
     await runSfx(cuesPath, sfxPath);
 
     // 5. Mix final video
-    updateJob(jobId, { stage: 'Mixing final video...', percent: 90 });
+    updateJob(jobId, { stage: 'Mixing final video...', percent: 92 });
     const silentPath = resolve(jobDir, 'silent.mp4');
     const finalPath = resolve(jobDir, 'final.mp4');
     await mixAudio(silentPath, sfxPath, finalPath);
@@ -74,6 +91,7 @@ export async function renderVideo(jobId, templateId, config) {
     console.error(`[render] Job ${jobId} error:`, err);
     updateJob(jobId, {
       status: 'error',
+      stage: 'Error: ' + err.message,
       error: err.message,
       percent: 0
     });
@@ -82,14 +100,22 @@ export async function renderVideo(jobId, templateId, config) {
 }
 
 /**
- * Render frames using Playwright + ffmpeg (mirrors scripts/render.mjs)
+ * Render frames using Playwright + ffmpeg.
+ *
+ * Performance tuning:
+ * - 30 fps is the TikTok/Reels standard — 60fps gives no benefit for shorts.
+ * - No subframe blending (sub=1) — canvas animations don't need temporal AA.
+ * - JPEG quality 80 keeps pipe small without visible loss at 1080×1920.
+ * - 20s video @ 30fps = 600 frames ≈ 30–60 seconds to render.
  */
 async function renderFrames(jobId, jobDir, htmlPath, config) {
   const { chromium } = await import('playwright');
 
-  const fps = 60;
+  const fps = 30;
   const dur = config.duration || 20;
-  const sub = 2; // lower subframes for speed in web app mode
+  const total = Math.round(dur * fps);
+
+  console.log(`[render] Capturing ${total} frames @ ${fps}fps for ${dur}s video...`);
 
   const browser = await chromium.launch();
   try {
@@ -102,17 +128,12 @@ async function renderFrames(jobId, jobDir, htmlPath, config) {
     await page.goto(pathToFileURL(htmlPath).href);
     await page.evaluate(() => document.fonts.ready);
 
-    // ffmpeg process
-    const vf = sub > 1
-      ? `tmix=frames=${sub},select=eq(mod(n\\,${sub})\\,${sub - 1}),setpts=N/${fps}/TB`
-      : 'null';
-
     const silentPath = resolve(jobDir, 'silent.mp4');
     const ffArgs = [
       '-y', '-loglevel', 'error',
-      '-f', 'image2pipe', '-framerate', String(fps * sub), '-i', '-',
-      '-vf', vf, '-r', String(fps),
-      '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p',
+      '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
+      '-c:v', 'libx264', '-crf', '20', '-preset', 'fast',
+      '-pix_fmt', 'yuv420p',
       silentPath
     ];
 
@@ -120,25 +141,39 @@ async function renderFrames(jobId, jobDir, htmlPath, config) {
     let ffError = null;
     ff.on('error', (err) => { ffError = err; });
 
-    const total = Math.round(dur * fps * sub);
+    updateJob(jobId, { browser, ff });
+
+    const canvasLocator = page.locator('#c');
+    const startTime = Date.now();
+    const progressInterval = Math.max(5, Math.round(fps / 3)); // every ~1/3 second
+
     for (let i = 0; i < total; i++) {
+      if (jobs.get(jobId)?.cancelled) {
+        throw new Error('Render cancelled by user');
+      }
       if (ffError) throw ffError;
-      await page.evaluate((t) => window.seek(t), i / (fps * sub));
-      const png = await page.locator('#c').screenshot({ type: 'jpeg', quality: 90 });
-      if (!ff.stdin.write(png)) {
+
+      await page.evaluate((t) => window.seek(t), i / fps);
+      const frame = await canvasLocator.screenshot({ type: 'jpeg', quality: 80 });
+
+      if (!ff.stdin.write(frame)) {
         await new Promise((r) => ff.stdin.once('drain', r));
       }
 
-      // Update progress
-      if (i % (fps * sub) === 0) {
-        const sec = i / (fps * sub);
-        const pct = 15 + (sec / dur) * 60; // 15% → 75%
+      // Smooth progress update
+      if (i % progressInterval === 0 || i === total - 1) {
+        const sec = i / fps;
+        const pct = 15 + (sec / dur) * 68; // 15% → 83%
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
         updateJob(jobId, {
-          stage: `Rendering ${sec.toFixed(0)}s / ${dur}s...`,
-          percent: Math.round(pct)
+          stage: `Rendering ${sec.toFixed(1)}s / ${dur}s  (${elapsed}s elapsed)`,
+          percent: Math.min(83, Math.round(pct))
         });
       }
     }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[render] Frame capture done in ${elapsed}s`);
 
     ff.stdin.end();
     await new Promise((resolve, reject) => {
@@ -146,7 +181,8 @@ async function renderFrames(jobId, jobDir, htmlPath, config) {
       ff.on('error', reject);
     });
   } finally {
-    await browser.close();
+    updateJob(jobId, { browser: null, ff: null });
+    await browser.close().catch(() => {});
   }
 }
 

@@ -42,7 +42,21 @@ export function wrapHTML(config, scenesCode, extraSetup = '') {
 <meta charset="utf-8">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=${encodeURIComponent(font)}:wght@400;600;700;800&display=swap');
-  html,body{margin:0;background:${bg}}canvas{display:block;max-height:100vh}
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: ${bg};
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
 </style>
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
