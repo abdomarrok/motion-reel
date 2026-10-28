@@ -16,29 +16,11 @@ const ROOT = resolve(__dirname, '..');
  * server-side rendering always matches the client-side preview exactly.
  */
 export async function compileTemplate(templateId, config) {
-  const templateMap = {
-    'kinetic-text': resolve(ROOT, 'app', 'src', 'templates', 'kinetic-text.js'),
-    'product-showcase': resolve(ROOT, 'app', 'src', 'templates', 'product-showcase.js'),
-    'brand-intro': resolve(ROOT, 'app', 'src', 'templates', 'brand-intro.js')
-  };
-
-  const templatePath = templateMap[templateId];
-  if (!templatePath) {
-    throw new Error(`Unknown template: "${templateId}". Available: ${Object.keys(templateMap).join(', ')}`);
+  const compiler = FALLBACK_COMPILERS[templateId];
+  if (!compiler) {
+    throw new Error(`Unknown template: "${templateId}". Available: ${Object.keys(FALLBACK_COMPILERS).join(', ')}`);
   }
-
-  try {
-    // Dynamic import of the ES module
-    const templateModule = await import(pathToFileURL(templatePath).href);
-    return templateModule.toHTML(config);
-  } catch (err) {
-    console.error(`[template-compiler] Failed to import ${templatePath}:`, err.message);
-    // Fallback to static compilers if dynamic import fails
-    const compiler = FALLBACK_COMPILERS[templateId];
-    if (!compiler) throw err;
-    console.log(`[template-compiler] Using fallback compiler for "${templateId}"`);
-    return compiler(config);
-  }
+  return compiler(config);
 }
 
 // ─── Fallback: Core Utilities (shared by all templates) ──────────────

@@ -508,6 +508,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
   transition: border-color var(--transition), transform var(--transition);
   overflow: hidden;
   flex-shrink: 0;
+  position: relative;
 }
 .color-swatch:hover {
   border-color: var(--border-active);
@@ -520,6 +521,9 @@ input, select, textarea { font-family: inherit; color: inherit; }
   margin: -25%;
   border: none;
   cursor: pointer;
+  opacity: 0;
+  position: absolute;
+  inset: 0;
 }
 
 .color-hex-input {
@@ -703,6 +707,11 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 
 .btn-block { width: 100%; }
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 0.82rem;
+}
 
 .btn-icon {
   width: 36px;
@@ -951,19 +960,23 @@ input, select, textarea { font-family: inherit; color: inherit; }
 @media (max-width: 900px) {
   .editor-view {
     flex-direction: column;
+    height: auto;
+    overflow: visible;
   }
   .editor-preview {
-    flex: 0 0 50vh;
+    flex: 0 0 500px;
     padding: 16px;
   }
   .preview-wrapper {
-    max-width: 220px;
+    height: 380px;
   }
   .editor-sidebar {
     flex: 1 1 auto;
     max-width: none;
     border-left: none;
     border-top: 1px solid var(--border-subtle);
+    height: auto;
+    overflow-y: visible;
   }
 }
 

@@ -1,11 +1,14 @@
-# 🎬 Motion Reel Studio
+# 🎬 Motion Reel Studio (React)
 
-> **Transform your brand into viral 9:16 motion graphic videos for TikTok & Reels — powered by Canvas, Playwright, and FFmpeg.**
+> **Transform your brand into viral 9:16 motion graphic videos for TikTok & Reels — powered by React, HTML5 Canvas, Spring Physics, Playwright, and FFmpeg.**
 
 ---
 
 ## ✨ Features
 
+- **⚛️ Modern React Architecture**:
+  - Full React 19 + TypeScript component architecture with hooks, memoized canvas rendering, and responsive state synchronization.
+  - Zero-lag reactive updates when modifying copy, typography, color palettes, or spring parameters.
 - **🎨 Curated Motion Templates**:
   - **Kinetic Text**: High-energy kinetic typography, staggered spring animations, accent bars, and punchy hook pacing.
   - **Product Showcase**: Floating UI mockups assembling piece by piece with physics-based springs and live metric counters.
@@ -15,17 +18,17 @@
   - Playback controls: play/pause, scrubbable timeline, and speed toggle ($0.5\times$, $1\times$, $2\times$).
 - **💎 Real-Time Brand Kit**:
   - Instant synchronization of brand name, accent & background colors, and typography.
-  - Full **RTL & Arabic script** support (Cairo font) alongside international typography (Inter, Outfit, Montserrat).
+  - Full **RTL & Arabic script** support (Cairo, Noto Sans Arabic, IBM Plex Sans Arabic) alongside international typography (Inter, Outfit, Montserrat, Roboto, Poppins, Playfair Display, Source Serif 4).
   - Persistent brand settings saved to `localStorage`.
 - **🛠️ Scene & Physics Editor**:
   - Edit captions, customize per-scene durations, and fine-tune spring dynamics (`stiffness` and `damping`).
+  - Add and delete scenes dynamically with automatic timeline recalibration.
 - **🚀 Production Video Render Engine**:
+  - Express API server integrated with Vite middleware listening on unified port `3000`.
   - Zero-config static FFmpeg bundled via `ffmpeg-static`.
-  - **High-speed 30 FPS render pipeline** tailored for TikTok & Reels standards (4×–5× faster than uncompressed 60fps renders, ~30–45s export time for 1080×1920 vertical video).
-  - Streamlined JPEG frame piping with FFmpeg `fast` preset.
+  - **High-speed 30 FPS render pipeline** tailored for TikTok & Reels standards (~30–45s export time for 1080×1920 vertical video).
   - Real-time Server-Sent Events (SSE) progress streaming with percent and elapsed time updates.
-  - Full render cancellation support to terminate browser contexts and encoder processes cleanly without resource leaks.
-  - Procedural sound effect synthesis (clicks, pops, whooshes) synced to scene cues.
+  - Full render cancellation support and procedural sound effect synthesis.
 
 ---
 
@@ -33,8 +36,8 @@
 
 ```
                                   ┌────────────────────────┐
-                                  │   Browser (Vite UI)    │
-                                  │  http://localhost:5173 │
+                                  │  React SPA + Vite Dev  │
+                                  │  http://localhost:3000 │
                                   └───────────┬────────────┘
                                               │
                       ┌───────────────────────┴───────────────────────┐
@@ -46,8 +49,8 @@
                                                                       │ POST /api/render
                                                                       ▼
                                                           ┌───────────────────────┐
-                                                          │   Express API Server  │
-                                                          │  http://localhost:3001│
+                                                          │  Integrated Express   │
+                                                          │  Full-Stack (Port 3000│
                                                           └───────────┬───────────┘
                                                                       │
                       ┌───────────────────────────────────────────────┴────────────────────────────────┐
@@ -77,11 +80,9 @@
 ### 1. Prerequisites
 
 - **Node.js**: v18.0.0 or higher
-- **npm** or **pnpm** / **yarn**
+- **npm**
 
 ### 2. Installation
-
-Clone the repository and install all dependencies:
 
 ```bash
 git clone https://github.com/your-username/motion-reel.git
@@ -89,22 +90,13 @@ cd motion-reel
 npm install
 ```
 
-Install Playwright Chromium browser:
-
-```bash
-npx playwright install chromium
-```
-
 ### 3. Launch Development Server
-
-Run both the Vite client and the Express render API simultaneously:
 
 ```bash
 npm run dev
 ```
 
-- **Frontend**: [http://localhost:5173](http://localhost:5173)
-- **API Server**: [http://localhost:3001](http://localhost:3001)
+The unified app (React frontend + Express API) will start on [http://localhost:3000](http://localhost:3000).
 
 ---
 
@@ -112,33 +104,36 @@ npm run dev
 
 ```
 motion-reel/
-├── app/                          # Frontend application (Vite)
-│   ├── index.html                # App shell
-│   ├── vite.config.js            # Vite configuration & API proxy
-│   └── src/
-│       ├── main.js               # Router & application entry point
-│       ├── styles.css            # Dark glassmorphic design system
-│       ├── components/
-│       │   ├── gallery.js        # Template catalog with animated cards
-│       │   ├── editor.js         # Split-view scene & brand editor
-│       │   ├── preview.js        # 9:16 Canvas player with scrubber
-│       │   ├── brand-kit.js      # Brand customization & persistence
-│       │   └── export-modal.js   # SSE render progress & MP4 downloader
-│       └── templates/
-│           ├── base.js           # Spring math, rng, and template utilities
-│           ├── kinetic-text.js   # Kinetic typography template
-│           ├── product-showcase.js # Product mockup animation template
-│           └── brand-intro.js    # Logo reveal & geometric build template
-├── server/                       # Backend video render service (Express)
-│   ├── index.mjs                 # REST API endpoints & SSE streaming
-│   ├── renderer.mjs              # Headless Playwright + FFmpeg pipeline
-│   └── template-compiler.mjs     # Standalone HTML template compiler
+├── index.html                    # Root HTML entry point
+├── vite.config.ts                # Vite React configuration
+├── tsconfig.json                 # TypeScript configuration
+├── server.ts                     # Full-stack server (Express API + Vite middleware)
+├── src/
+│   ├── main.tsx                  # React DOM root mounting
+│   ├── App.tsx                   # Main app & hash router
+│   ├── styles.css                # Premium dark glassmorphic design system
+│   ├── types/                    # TypeScript interfaces for brand, scenes, templates
+│   ├── templates/
+│   │   ├── base.ts               # Core spring physics, RNG, cues & HTML compiler
+│   │   ├── kinetic-text.ts       # Kinetic typography template definition
+│   │   ├── product-showcase.ts   # Product mockup animation template definition
+│   │   ├── brand-intro.ts        # Logo reveal & geometric build template definition
+│   │   └── index.ts              # Template registry
+│   └── components/
+│       ├── Navbar.tsx            # Header navigation & logo
+│       ├── Gallery.tsx           # Template gallery view
+│       ├── TemplateCard.tsx      # Animated live canvas thumbnail card
+│       ├── Editor.tsx            # Split-view scene & brand editor
+│       ├── Preview.tsx           # 9:16 Canvas player with scrubber & controls
+│       ├── BrandKit.tsx          # Brand palette & font customization
+│       ├── ScenesList.tsx        # Scene timing & spring parameters
+│       └── ExportModal.tsx       # SSE render progress & MP4 downloader
+├── server/
+│   ├── index.mjs                 # Express route handlers
+│   ├── renderer.mjs              # Playwright + FFmpeg frame rendering
+│   └── template-compiler.mjs     # Standalone template compiler
 ├── scripts/                      # CLI standalone tools
-│   ├── render.mjs                # CLI video renderer
-│   ├── sfx.mjs                   # Procedural audio generator
-│   └── beats.py                  # Audio beat-tracking utility
-├── package.json
-└── README.md
+└── package.json
 ```
 
 ---
@@ -147,12 +142,11 @@ motion-reel/
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Runs both Vite client (`:5173`) and Express API (`:3001`) with concurrently |
-| `npm run dev:client` | Starts only the Vite frontend dev server |
-| `npm run dev:server` | Starts the Express render API with hot reload (`node --watch`) |
-| `npm run build` | Builds the production Vite bundle to `dist/` |
+| `npm run dev` | Starts full-stack React app and render API on port 3000 |
+| `npm run build` | Builds TypeScript and Vite production bundle |
+| `npm run start` | Runs the production server |
 | `npm run preview` | Previews the production Vite build locally |
-| `npm run render:cli` | Renders a video directly from the command line using Playwright & FFmpeg |
+| `npm run render:cli` | Renders a video directly from command line using Playwright & FFmpeg |
 
 ---
 

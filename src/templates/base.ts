@@ -1,9 +1,5 @@
-/**
- * Base template utilities — shared code for all motion templates.
- * These string snippets get embedded in the generated HTML for server-side rendering.
- */
+import { BrandConfig, SceneConfig, TemplateConfig, CueItem } from '../types';
 
-/** The core utility functions as a string, injected into every generated HTML */
 export const CORE_UTILS = `
 const W = 1080, H = 1920;
 const g = document.getElementById('c').getContext('2d');
@@ -32,8 +28,53 @@ function easeOutCubic(t) { return 1 - Math.pow(1 - clamp(t), 3); }
 function easeInOutCubic(t) { t = clamp(t); return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3) / 2; }
 `;
 
-/** Wrap template scenes + config into a complete standalone HTML page */
-export function wrapHTML(config, scenesCode, extraSetup = '') {
+export const DEFAULT_BRAND: BrandConfig = {
+  name: 'MARROK',
+  accentColor: '#6EA0FF',
+  bgColor: '#080A12',
+  textColor: '#FFFFFF',
+  font: 'Cairo',
+  direction: 'rtl'
+};
+
+export const FONT_OPTIONS = [
+  'Cairo',
+  'Inter',
+  'Roboto',
+  'Outfit',
+  'Montserrat',
+  'Poppins',
+  'Playfair Display',
+  'Source Serif 4',
+  'Noto Sans Arabic',
+  'IBM Plex Sans Arabic'
+];
+
+const STORAGE_KEY = 'motion-reel-brand';
+
+export function loadBrand(): BrandConfig {
+  if (typeof window === 'undefined') return { ...DEFAULT_BRAND };
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return { ...DEFAULT_BRAND, ...JSON.parse(stored) };
+    }
+  } catch (e) {
+    console.error('Failed to load brand from localStorage', e);
+  }
+  return { ...DEFAULT_BRAND };
+}
+
+export function saveBrand(brand: BrandConfig): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(brand));
+  } catch (e) {
+    console.error('Failed to save brand to localStorage', e);
+  }
+}
+
+export function wrapHTML(config: TemplateConfig, scenesCode: string, extraSetup = ''): string {
   const font = config.brand?.font || 'Cairo';
   const bg = config.brand?.bgColor || '#080A12';
   const dir = config.brand?.direction || 'rtl';
@@ -61,7 +102,7 @@ export function wrapHTML(config, scenesCode, extraSetup = '') {
 <canvas id="c" width="1080" height="1920"></canvas>
 <script>
 ${CORE_UTILS}
-const DUR = ${config.duration || 24};
+const DUR = ${config.duration || 20};
 g.direction = '${dir}';
 g.textBaseline = 'alphabetic';
 
@@ -83,23 +124,10 @@ if (!navigator.webdriver) {
 </script>`;
 }
 
-/** Default brand config */
-export const DEFAULT_BRAND = {
-  name: 'MARROK',
-  accentColor: '#6EA0FF',
-  bgColor: '#080A12',
-  textColor: '#FFFFFF',
-  font: 'Cairo',
-  direction: 'rtl'
-};
-
-/** Generate cues from scene transitions */
-export function generateCues(scenes) {
-  const cues = [];
+export function generateCues(scenes: SceneConfig[]): CueItem[] {
+  const cues: CueItem[] = [];
   for (const scene of scenes) {
-    // Click at scene start
     cues.push({ t: scene.from + 0.1, type: 'click', amp: 0.14 });
-    // Whoosh for scenes longer than 2s
     if ((scene.to - scene.from) >= 2.5) {
       cues.push({ t: scene.from + 0.5, type: 'whoosh', amp: 0.12 });
     }

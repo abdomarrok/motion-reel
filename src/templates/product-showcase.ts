@@ -1,12 +1,7 @@
-/**
- * Product Showcase Template
- * UI cards assemble piece-by-piece with spring physics.
- * Best for: SaaS products, app launches, feature announcements.
- * Enhanced with richer UI mockup elements and animated metric counters.
- */
-import { wrapHTML, DEFAULT_BRAND, generateCues } from './base.js';
+import { wrapHTML, DEFAULT_BRAND } from './base';
+import { BrandConfig, TemplateConfig, TemplateMeta, TemplateDefinition } from '../types';
 
-export const meta = {
+export const meta: TemplateMeta = {
   id: 'product-showcase',
   name: 'Product Showcase',
   description: 'UI mockup cards assemble with spring timing. Features highlighted one by one. Animated metric counters for social proof.',
@@ -14,7 +9,7 @@ export const meta = {
   tags: ['product', 'UI', 'features', 'SaaS']
 };
 
-export function defaultConfig(brand = DEFAULT_BRAND) {
+export function defaultConfig(brand: Partial<BrandConfig> = DEFAULT_BRAND): TemplateConfig {
   return {
     brand: { ...DEFAULT_BRAND, ...brand },
     duration: 20,
@@ -68,13 +63,13 @@ export function defaultConfig(brand = DEFAULT_BRAND) {
   };
 }
 
-export function toHTML(config) {
+export function toHTML(config: TemplateConfig): string {
   const c = config || {};
   const b = c.brand || DEFAULT_BRAND;
   const defaults = defaultConfig(b).scenes;
   const scenes = (c.scenes && c.scenes.length > 0) ? c.scenes : defaults;
 
-  const sceneBlocks = [];
+  const sceneBlocks: string[] = [];
 
   scenes.forEach((sc, i) => {
     const from = sc.from ?? (i * 3);
@@ -301,7 +296,6 @@ export function toHTML(config) {
     g.restore();
   }}`);
     } else {
-      // Dynamic additional scene
       sceneBlocks.push(`  // Dynamic Scene ${i + 1}
   { from: ${from}, to: ${to}, draw(t) {
     const s = spring(t - 0.1, ${k}, ${d});
@@ -322,3 +316,9 @@ export function toHTML(config) {
   const scenesCode = `const SCENES = [\n${sceneBlocks.join(',\n')}\n];`;
   return wrapHTML(config, scenesCode);
 }
+
+export const productShowcaseTemplate: TemplateDefinition = {
+  meta,
+  defaultConfig,
+  toHTML
+};

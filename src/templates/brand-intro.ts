@@ -1,12 +1,7 @@
-/**
- * Brand Intro Template
- * Geometric shapes build into a pattern, then the logo reveals.
- * Best for: brand awareness clips, intro sequences, logo reveals.
- * Enhanced with more geometric variety, depth layers, and refined transitions.
- */
-import { wrapHTML, DEFAULT_BRAND, generateCues } from './base.js';
+import { wrapHTML, DEFAULT_BRAND } from './base';
+import { BrandConfig, TemplateConfig, TemplateMeta, TemplateDefinition } from '../types';
 
-export const meta = {
+export const meta: TemplateMeta = {
   id: 'brand-intro',
   name: 'Brand Intro',
   description: 'Geometric shapes stagger-build into a pattern, the logo reveals from behind. Minimal, refined, brand-first.',
@@ -14,7 +9,7 @@ export const meta = {
   tags: ['brand', 'logo', 'intro', 'geometric']
 };
 
-export function defaultConfig(brand = DEFAULT_BRAND) {
+export function defaultConfig(brand: Partial<BrandConfig> = DEFAULT_BRAND): TemplateConfig {
   return {
     brand: { ...DEFAULT_BRAND, ...brand },
     duration: 16,
@@ -59,13 +54,13 @@ export function defaultConfig(brand = DEFAULT_BRAND) {
   };
 }
 
-export function toHTML(config) {
+export function toHTML(config: TemplateConfig): string {
   const c = config || {};
   const b = c.brand || DEFAULT_BRAND;
   const defaults = defaultConfig(b).scenes;
   const scenes = (c.scenes && c.scenes.length > 0) ? c.scenes : defaults;
 
-  const sceneBlocks = [];
+  const sceneBlocks: string[] = [];
 
   scenes.forEach((sc, i) => {
     const from = sc.from ?? (i * 3);
@@ -289,7 +284,6 @@ export function toHTML(config) {
     }
   }}`);
     } else {
-      // Dynamic additional scene
       sceneBlocks.push(`  // Dynamic Scene ${i + 1}
   { from: ${from}, to: ${to}, draw(t) {
     const s = spring(t - 0.1, ${k}, ${d});
@@ -310,3 +304,9 @@ export function toHTML(config) {
   const scenesCode = `const SCENES = [\n${sceneBlocks.join(',\n')}\n];`;
   return wrapHTML(config, scenesCode);
 }
+
+export const brandIntroTemplate: TemplateDefinition = {
+  meta,
+  defaultConfig,
+  toHTML
+};
